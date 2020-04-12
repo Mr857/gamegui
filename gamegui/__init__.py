@@ -3,12 +3,8 @@ try:
     import pygame
 except ImportError:
     raise ReliantMuduleNotFound('Please install the mudule PYGAME')
-import os, sys, threading
+import os, sys
 from pygame.locals import *
-try:
-    from PIL import Image as Pillow
-except ImportError:
-    raise ReliantMuduleNotFound('Please install the mudule PILLOW')
 
 pygame.init()
 fontname = os.path.split(__file__)[0]+'/fonts/mainfont.ttf'
@@ -19,6 +15,19 @@ SELECT = 0
 def fontpath(path):
     global fontname
     fontname = os.path.abspath(path)
+
+class Funcs:
+    def exit(self, errorlevel=0):
+        pygame.quit()
+        sys.exit(errorlevel)
+    def set_exit(self, define):
+        self.exit = define
+    def pressing(self, arg=None):
+        if arg == None:
+            return self.pressed
+        else:
+            self.pressed = arg
+funcs = Funcs()
 
 class Control:
     def __init__(self, root):
@@ -38,7 +47,7 @@ class Control:
             ALL.remove(self)
         del self
     def place(self, rect=None):
-        self.rect = rect if isinstance(rect, (tuple, list)) else (rect if rect else self.root.rect.topleft)
+        self.rect = rect
         ALL.append(self)
         self.update()
     def unplace(self):
@@ -54,8 +63,8 @@ class Control:
         self.tip.blit(self.font.render(string, True, fg), (0, 0))
     def tiplist(self, lst):
         pass
-
-import gamegui.draw as draw
+    def style(self):
+        pass
 
 XSB = 'xscrollbar'
 YSB = 'yscrollbar'
@@ -67,100 +76,16 @@ class Scrollbar(Control):
     def set_focus(self):
         raise VoidFuncError('Void define')
 
-class Window(draw.Canvas):
-    def __init__(self, size, mode, caption='Window', icon=None):
-        draw.Canvas.__init__(self, None, size)
-        _ALL.clear()
-        _ALL.append(self)
-        
-        if icon:
-            pygame.display.set_icon(icon.surface())
-        self.screen = pygame.display.set_mode((size[0], size[1]), mode)
-        self.size, self.caption, self.mode, self.fs, self.rs = \
-                      size, caption, mode, True if mode==FULLSCREEN else False, True if mode==RESIZABLE else False
-        pygame.display.set_caption(self.caption)
-        global ROOTWD
-        ROOTWD = self
-        draw.Canvas.update(self)
-    def __len__(self):
-        return self.size
-    def icon(self, image):
-        pygame.display.set_icon(image.surface())
-    def fullscreen(self):
-        pygame.display.quit()
-        pygame.display.init()
-        self.screen = pygame.display.set_mode\
-                      ((self.size[0], self.size[1]), self.mode if self.fs else FULLSCREEN)
-        self.fs = not self.fs
-        draw.Canvas.update(self)
-    def isfullscreen(self):
-        return self.fs
-    def resizable(self):
-        pygame.display.quit()
-        pygame.display.init()
-        self.screen = pygame.display.set_mode\
-                      ((self.size[0], self.size[1]), self.mode if self.rs else RESIZABLE)
-        self.rs = not self.fs
-        draw.Canvas.update(self)
-    def isresizable(self):
-        return self.rs
-    def title(self, caption):
-        self.caption = caption
-        pygame.display.set_caption(self.caption)
-        draw.Canvas.update(self)
-    def get_title(self):
-        return self.caption
-    def kill(self):
-        pygame.display.quit()
-        pygame.display.init()
-        _ALL = []
-        del self
-    def resize(self, size):
-        self.size = size
-        pygame.display.quit()
-        pygame.display.init()
-        self.screen = pygame.display.set_mode\
-                      ((self.size[0], self.size[1]),\
-                      FULLSCREEN if self.fs else (RESIZABLE if self.rs else self.mode))
-        draw.Canvas.update(self)
-    def place(self, rect):
-        raise VoidFuncError('Void define')
-    def unplace(self):
-        raise VoidFuncError('Void define')
-
-class Image(Control):
-    def __init__(self, root, path, alpha=255):
-        if not isinstance(path, str):
-            if isinstance(path, draw.Canvas):
-                self.image = path.screen
-            else:
-                raise ValueError
-        else:
-            self.image = pygame.image.load(path)
-        self.image.set_alpha(alpha)
-        self.pillow = Pillow.open(path)
-        self.rgba = self.pillow.convert('RGBA')
-        Control.__init__(self, root)
-    def __len__(self):
-        return self.pillow.size
-    def __getitem__(self, index):
-        return self.rgba.getpixel(index)
-    def surface(self):
-        return self.image
-
-READONLY = 'readonly'
-READWRITE = 'readwrite'
-PASSWORD = '*'
 class Text(Control):
-    def __init__(self, root, text='', font=(None, 20), state='readonly', show=None, bg=None, fg=(0, 0, 0), xscrollbar=False, yscrollbar=False):
+    def __init__(self, root, text='', font=(None, 20), border=0, bg=None, fg=(0, 0, 0), xscrollbar=False, yscrollbar=False):
         self.imgs = []
         self.positions = []
         self.positions_ = []
         self.end = len(text)
         self.active = [self.end, -1]
-        self.text, self.state, self.show, self.bg, self.fg, self.xscrollbar, self.yscrollbar = text, state, show, bg, fg, xscrollbar, yscrollbar
+        self.text, self.border, self.bg, self.fg, self.xscrollbar, self.yscrollbar = text, border, bg, fg, xscrollbar, yscrollbar
         self.font = pygame.font.Font(font[0] if font[0] else fontname, font[1])
-        self.image = self.font.render(self.text, True, self.fg)
+        self._draw()
         Control.__init__(self, root)
     def __str__(self):
         return self.text
@@ -197,7 +122,7 @@ class Text(Control):
             self.active = position+len(value) if position else self.end
         else:
             raise ValueError
-        self.image = self.font.render(self.text, True, self.fg)
+        self._draw()
         Control.update(self)
     def get(self):
         return str(self)
@@ -228,8 +153,22 @@ class Text(Control):
                 self.text = self.text[:key[0]]+self.text[key[1]+1:]
             else:
                 raise ValueError
-        self.image = self.font.render(self.text, True, self.fg)
+        self._draw()
         Control.update(self)
+    def _draw(self):
+        images = [self.font.render(x, True, self.fg) for x in self.text.split('\n')]
+        w = max([x.get_width() for x in images])
+        h = sum([x.get_height() for x in images])
+        back = pygame.Surface((w, h))
+        if self.bg:
+            back.fill(self.bg)
+        else:
+            back.set_alpha(0)
+        for i in images:
+            pass
+        self.image = self.font.render(self.text, True, self.fg)
+
+import gamegui.textbox as textbox
 
 PUSH = 0
 PULL = 1
@@ -243,6 +182,10 @@ class Button(Control):
         Control.__init__(self, root)
     def __call__(self):
         return self.command()
+    def place(self, rect):
+        if isinstance(self.text, Image):
+            self.image = pygame.transform.scale(self.text.surface(), (rect.width, rect.height))
+        Control.place(self, rect)
 
 # ------------------------------------------------------ #
 COMMON = CMN = 0
@@ -321,14 +264,14 @@ class Radiobutton(Control):
         return bl
 
 class Listbox(Control):
-    def __init__(self, root, texts, font=(None, 20), style=0, bg=(240, 240, 240), fg=(0, 0, 0), commands=None, xscrollbar=False, yscrollbar=False):
-        self.texts, self.style, self.bg, self.fg, self.xscrollbar, self.yscrollbar = texts, style, bg, fg, xscrollbar, yscrollbar
+    def __init__(self, root, texts, font=(None, 15), bg=(240, 240, 240), selectbg=(0, 100, 255), fg=(0, 0, 0), commands=None, xscrollbar=False, yscrollbar=False):
+        self.texts, self.bg, self.selectbg, self.fg, self.xscrollbar, self.yscrollbar = texts, bg, selectbg, fg, xscrollbar, yscrollbar
         if commands:
             assert len(commands)==len(texts)
         self.states = [0]*len(self.texts)
-        self.commands = commands if commands else [lambda x=None:x]*len(self.texts)
+        self.commands = [(x if x else lambda x=None:x) for x in commands] if commands else [lambda x=None:x]*len(self.texts)
         self.font = pygame.font.Font(font[0] if font[0] else fontname, font[1])
-        self.images = [(self.font.render(x, True, fg) if isinstance(x, str) else x.image) for x in self.texts]
+        self.images = [(self.font.render(' '+x, True, fg) if isinstance(x, str) else x.image) for x in self.texts]
         Control.__init__(self, root)
     def __len__(self):
         return len(self.texts)
@@ -344,7 +287,7 @@ class Listbox(Control):
             assert value < 2
             self.states[key] = value
         self.texts[key] = value
-        self.images[key] = self.font.render(value, True, self.fg) if isinstance(value, str) else value.image
+        self.images[key] = self.font.render(' '+value, True, self.fg) if isinstance(value, str) else value.image
         Control.update(self)
     def get(self, type='text'):
         if type == 'text':
@@ -358,7 +301,7 @@ class Listbox(Control):
     def append(self, text, command=None):
         self.texts.append(text)
         self.commands.append(command if command else lambda x=None:x)
-        self.images.append(self.font.render(text, True, self.fg) if isinstance(text, str) else text.image)
+        self.images.append(self.font.render(' '+text, True, self.fg) if isinstance(text, str) else text.image)
         Control.update(self)
     def pop(self, key):
         self.texts.pop(key)
@@ -369,6 +312,9 @@ class Listbox(Control):
         key = self.texts.index(value)
         self.pop(key)
         Control.update(self)
+    def place(self, rect):
+        self.allrect = pygame.Rect(rect.topleft, (rect.width, rect.height*len(self.images)))
+        Control.place(self, rect)
 
 class Labelbutton(Control):
     def __init__(self, root, titles, values, icon=None, font=(None, 20), bg=(240, 240, 240), fg=(0, 0, 0)):
@@ -393,62 +339,75 @@ class Labelbutton(Control):
         Control.update(self)
 # ------------------------------------------------------ #
 
-class Funcs:
-    def exit(self, errorlevel=0):
-        pygame.quit()
-        sys.exit(errorlevel)
-    def set_exit(self, define):
-        self.exit = define
-    def touched(self, rect, mouse):
-        if rect.x<mouse[0] and mouse[0]<rect.x+rect.width and rect.y<mouse[1] and mouse[1]<rect.y+rect.height:
-            return True
-        else:
-            return False
-funcs = Funcs()
+import gamegui.draw as draw
+from gamegui.draw import Image
 
-def maindraw(window):
-    screen = window.screen
-    window.clear()
-    for widget in ALL:
-        wrect = widget.rect
-        if isinstance(widget, Image):
-            screen.blit(widget.surface(), wrect)
-        elif isinstance(widget, Text):
-            if widget.bg:
-                window.drawrect(wrect, color=widget.bg)
-            screen.blit(widget.image, wrect)
-        elif isinstance(widget, Button):
-            if widget.style == 0:
-                window.drawrect(widget.rect, color=widget.bg)
-                window.aaline((wrect.x, wrect.y), (wrect.x, wrect.y+wrect.height), color=(255, 255, 255))
-                window.aaline((wrect.x, wrect.y), (wrect.x+wrect.width, wrect.y), color=(255, 255, 255))
-                window.aaline((wrect.x, wrect.y+wrect.height), (wrect.x+wrect.width, wrect.y+wrect.height), color=(5, 5, 5))
-                window.aaline((wrect.x+wrect.width, wrect.y), (wrect.x+wrect.width, wrect.y+wrect.height), color=(5, 5, 5))
-            buffer = widget.image.get_rect()
-            buffer.center = wrect.center
-            screen.blit(widget.image, buffer)
-            del buffer
-        elif isinstance(widget, Checkbutton):
-            pass
-        elif isinstance(widget, Radiobutton):
-            pass
-        elif isinstance(widget, Listbox):
-            pass
-        elif isinstance(widget, Labelbutton):
-            pass
-        else:
-            raise WidgetDrawError('Some troubles in ALL')
+class Window(draw.Canvas):
+    def __init__(self, size, mode=0, caption='Window', icon=None):
+        draw.Canvas.__init__(self, None, size)
+        _ALL.clear()
+        _ALL.append(self)
+        if icon:
+            pygame.display.set_icon(icon.surface())
+        self.screen = pygame.display.set_mode(size, mode)
+        self.size, self.caption, self.mode, self.fs, self.rs = \
+                      size, caption, mode, True if mode==FULLSCREEN else False, True if mode==RESIZABLE else False
+        pygame.display.set_caption(self.caption)
+        global ROOTWD
+        ROOTWD = self
+        draw.Canvas.update(self)
+    def __len__(self):
+        return self.size
+    def icon(self, image):
+        pygame.display.set_icon(image.surface())
+    def fullscreen(self):
+        pygame.display.quit()
+        pygame.display.init()
+        self.screen = pygame.display.set_mode\
+                      ((self.size[0], self.size[1]), self.mode if self.fs else FULLSCREEN)
+        self.fs = not self.fs
+        draw.Canvas.update(self)
+    def isfullscreen(self):
+        return self.fs
+    def resizable(self):
+        pygame.display.quit()
+        pygame.display.init()
+        self.screen = pygame.display.set_mode\
+                      ((self.size[0], self.size[1]), self.mode if self.rs else RESIZABLE)
+        self.rs = not self.fs
+        draw.Canvas.update(self)
+    def isresizable(self):
+        return self.rs
+    def title(self, caption):
+        self.caption = caption
+        pygame.display.set_caption(self.caption)
+        draw.Canvas.update(self)
+    def get_title(self):
+        return self.caption
+    def kill(self):
+        pygame.display.quit()
+        pygame.display.init()
+        _ALL = []
+        del self
+    def resize(self, size):
+        self.size = size
+        pygame.display.quit()
+        pygame.display.init()
+        self.screen = pygame.display.set_mode\
+                      ((self.size[0], self.size[1]),\
+                      FULLSCREEN if self.fs else (RESIZABLE if self.rs else self.mode))
+        draw.Canvas.update(self)
+    def place(self, rect):
+        raise VoidFuncError('Void define')
+    def unplace(self):
+        raise VoidFuncError('Void define')
+
+import gamegui.event as event
 
 def mainloop(delay=20):
     while True:
-        mouse = pygame.mouse.get_pos()
-        for event in pygame.event.get():
-            if event.type == QUIT:
-                funcs.exit()
-            elif pygame.mouse.get_pressed()[0]:
-                for i in [x for x in ALL if isinstance(x, Button)]:
-                    if funcs.touched(i.rect, mouse):
-                        i()
-        maindraw(ROOTWD)
+        for e in pygame.event.get():
+            event.mainevent(e)
+        draw.maindraw(ROOTWD, ALL)
         pygame.display.update()
         pygame.time.delay(delay)
